@@ -53,6 +53,15 @@
 </head>
 
 <body>
+
+  <!-- ✅ PASSWORD PROTECTION -->
+  <script>
+    const password = prompt("Enter password to access the Bridge Risk Map:");
+    if (password !== "7239") {
+      document.body.innerHTML = "<h1 style='text-align:center; margin-top:20%; font-family:Arial;'>Access Denied. Wrong password.</h1>";
+    }
+  </script>
+
   <div id="map"></div>
 
   <div class="topbar">
@@ -264,11 +273,8 @@
       return { lat, lon };
     }
 
-    // =========================================================
-    // ✅ CHANGE ONLY THIS PART: ALL MARKERS SAME SIZE
-    // =========================================================
     function markerRadiusFromRisk(v, datasetId) {
-      return 6; // <-- SAME SIZE FOR ALL BRIDGES (change 6 to 4/5/7 if you want)
+      return 6;
     }
 
     function makePopup(props) {
