@@ -53,15 +53,6 @@
 </head>
 
 <body>
-
-  <!-- ✅ PASSWORD PROTECTION -->
-  <script>
-    const password = prompt("Enter password to access the Bridge Risk Map:");
-    if (password !== "7239") {
-      document.body.innerHTML = "<h1 style='text-align:center; margin-top:20%; font-family:Arial;'>Access Denied. Wrong password.</h1>";
-    }
-  </script>
-
   <div id="map"></div>
 
   <div class="topbar">
@@ -87,16 +78,16 @@
     // Put ALL these CSV files in the SAME folder as this HTML.
     // =========================================================
     const DATASETS = [
-      { id: "overheight",     name: "Overheight Collision Risk",  csvUrl: "overheights.csv",             riskIndexCol: "Risk_Index" },
-      { id: "fatigue",        name: "Fatigue Risk",               csvUrl: "fatigue.csv",                 riskIndexCol: "Pf_fatigue" },
-      { id: "flood_scour",    name: "Flood + Scour Risk",         csvUrl: "flood_scour_risk.csv",        riskIndexCol: "Risk_flood" },
-      { id: "wildfire",       name: "Wildfire Risk",              csvUrl: "wildfire_risk.csv",           riskIndexCol: "Risk_wildfire" },
-      { id: "hurricane",      name: "Hurricane Risk",             csvUrl: "huricane_risk.csv",           riskIndexCol: "Risk_hurricane" },
-      { id: "explosive",      name: "Explosive Risk",             csvUrl: "explosive.csv",               riskIndexCol: "CF" },
-      { id: "vessel",         name: "Vessel Collision Risk",      csvUrl: "vesselcollision_risk.csv",    riskIndexCol: "Risk_vessel" },
-      { id: "deterioration",  name: "Advanced Deterioration Risk",csvUrl: "deterioration_risk.csv",      riskIndexCol: "Risk_advdet" },
-      { id: "tornado",        name: "Tornado Risk",               csvUrl: "Tornado_riskkk.csv",            riskIndexCol: "Risk_tornado" },
-      { id: "overloads",      name: "overload Risk",              csvUrl: "overloads_risk.csv",          riskIndexCol: "Risk_Index" },
+      { id: "overheight",     name: "Overheight Collision Risk",  csvUrl: "risk_overheights.csv",             riskIndexCol: "Risk_Index" },
+      { id: "fatigue",        name: "Fatigue Risk",               csvUrl: "risk_fatigue.csv",                 riskIndexCol: "Pf_fatigue" },
+      { id: "flood_scour",    name: "Flood + Scour Risk",         csvUrl: "risk_flood.csv",        riskIndexCol: "Risk_flood" },
+      { id: "wildfire",       name: "Wildfire Risk",              csvUrl: "risk_wildfire.csv",           riskIndexCol: "Risk_wildfire" },
+      { id: "hurricane",      name: "Hurricane Risk",             csvUrl: "risk_hurricane.csv",           riskIndexCol: "Risk_hurricane" },
+      { id: "explosive",      name: "Explosive Risk",             csvUrl: "risk_explosive.csv",               riskIndexCol: "CF" },
+      { id: "vessel",         name: "Vessel Collision Risk",      csvUrl: "risk_vessel.csv",    riskIndexCol: "Risk_vessel" },
+      { id: "deterioration",  name: "Advanced Deterioration Risk",csvUrl: "risk_deterioration.csv",      riskIndexCol: "Risk_advdet" },
+      { id: "tornado",        name: "Tornado Risk",               csvUrl: "Tornado_riskkkk(1).csv",            riskIndexCol: "Risk_tornado" },
+      { id: "overloads",      name: "overload Risk",              csvUrl: "risk_overloads.csv",          riskIndexCol: "Risk_Index" },
     ];
 
     // Derived column used for filtering by rank buckets
@@ -273,8 +264,11 @@
       return { lat, lon };
     }
 
+    // =========================================================
+    // ✅ CHANGE ONLY THIS PART: ALL MARKERS SAME SIZE
+    // =========================================================
     function markerRadiusFromRisk(v, datasetId) {
-      return 6;
+      return 6; // <-- SAME SIZE FOR ALL BRIDGES (change 6 to 4/5/7 if you want)
     }
 
     function makePopup(props) {
