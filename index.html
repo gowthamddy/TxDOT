@@ -53,6 +53,16 @@
 </head>
 
 <body>
+
+  <!-- PASSWORD PROTECTION -->
+  <script>
+    const password = prompt("Enter password to access the Bridge Risk Map:");
+    if (password !== "7239") {
+      document.body.innerHTML = "<div style='text-align:center; margin-top:20%; font-family:Arial;'><h1>❌ Access Denied</h1><p>Wrong password. Please refresh and try again.</p></div>";
+      throw new Error("Access denied");
+    }
+  </script>
+
   <div id="map"></div>
 
   <div class="topbar">
