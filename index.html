@@ -1,0 +1,487 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Bridge Risk Map (Multiple Risks) — CSV</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <!-- Leaflet -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+  <!-- PapaParse (CSV) -->
+  <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
+
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body { height: 100%; font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; }
+
+    /* ── PASSWORD OVERLAY ── */
+    #pw-overlay {
+      position: fixed; inset: 0; z-index: 9999;
+      background: #1a1a2e;
+      display: flex; align-items: center; justify-content: center;
+    }
+    #pw-box {
+      background: #fff; border-radius: 14px;
+      padding: 40px 36px; width: 340px;
+      box-shadow: 0 8px 40px rgba(0,0,0,0.4);
+      text-align: center;
+    }
+    #pw-box h2 { font-size: 20px; font-weight: 700; margin-bottom: 6px; color: #1a1a2e; }
+    #pw-box p  { font-size: 13px; color: #666; margin-bottom: 22px; }
+    #pw-input {
+      width: 100%; padding: 10px 14px; font-size: 16px;
+      border: 2px solid #ddd; border-radius: 8px;
+      outline: none; letter-spacing: 3px; text-align: center;
+      margin-bottom: 14px; transition: border-color 0.2s;
+    }
+    #pw-input:focus { border-color: #b30000; }
+    #pw-input.shake { animation: shake 0.4s ease; border-color: #b30000; }
+    #pw-btn {
+      width: 100%; padding: 11px; font-size: 15px; font-weight: 600;
+      background: #b30000; color: #fff; border: none; border-radius: 8px;
+      cursor: pointer; transition: background 0.2s;
+    }
+    #pw-btn:hover { background: #8b0000; }
+    #pw-error   { margin-top: 12px; font-size: 13px; color: #b30000; min-height: 18px; font-weight: 500; }
+    #pw-attempts{ margin-top: 8px; font-size: 12px; color: #999; }
+
+    @keyframes shake {
+      0%,100% { transform: translateX(0); }
+      20%      { transform: translateX(-8px); }
+      40%      { transform: translateX(8px); }
+      60%      { transform: translateX(-6px); }
+      80%      { transform: translateX(6px); }
+    }
+
+    /* ── LOCKED SCREEN ── */
+    #locked-overlay {
+      position: fixed; inset: 0; z-index: 9999;
+      background: #1a1a2e;
+      display: none; align-items: center; justify-content: center;
+    }
+    #locked-box {
+      background: #fff; border-radius: 14px;
+      padding: 40px 36px; width: 340px;
+      box-shadow: 0 8px 40px rgba(0,0,0,0.4);
+      text-align: center;
+    }
+    #locked-box .lock-icon { font-size: 48px; margin-bottom: 16px; }
+    #locked-box h2 { font-size: 20px; font-weight: 700; color: #1a1a2e; margin-bottom: 10px; }
+    #locked-box p  { font-size: 13px; color: #666; }
+
+    /* ── MAP (hidden until unlocked) ── */
+    #map { height: 100%; display: none; }
+
+    .topbar {
+      position: absolute; z-index: 1000; top: 10px; left: 10px;
+      background: rgba(255,255,255,0.95); padding: 8px 10px; border-radius: 10px;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.15);
+      font: 14px/1.2 system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+      display: flex; gap: 10px; align-items: center;
+      max-width: calc(100vw - 20px); flex-wrap: wrap;
+    }
+
+    .legend {
+      background: white; padding: 10px 10px 6px; line-height: 1.2;
+      border-radius: 8px; box-shadow: 0 1px 6px rgba(0,0,0,0.15);
+      font: 13px/1.2 system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+    }
+    .legend .row { display: flex; align-items: center; margin-bottom: 6px; }
+    .legend .swatch {
+      width: 14px; height: 14px; border-radius: 50%;
+      margin-right: 8px; border: 1px solid rgba(0,0,0,0.25); box-sizing: border-box;
+    }
+
+    .status {
+      position: absolute; left: 10px; bottom: 10px; background: rgba(255,255,255,0.9);
+      padding: 6px 8px; border-radius: 6px; font: 12px/1.2 system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.15); max-width: 70vw; overflow: auto;
+      max-height: 30vh; white-space: pre-wrap;
+    }
+
+    select, button { padding: 4px 6px; }
+    .leaflet-popup-content-wrapper { width: 560px; }
+    .leaflet-popup-content { width: 540px !important; margin: 14px 16px; }
+    .leaflet-popup-content table { width: 100%; border-collapse: collapse; }
+    .leaflet-popup-content th { vertical-align: top; }
+    .leaflet-popup-content td { word-break: break-word; }
+  </style>
+</head>
+
+<body>
+
+  <!-- ── PASSWORD OVERLAY ── -->
+  <div id="pw-overlay">
+    <div id="pw-box">
+      <h2>🌉 TxDOT Bridge Risk Map</h2>
+      <p>Project 0-7239 — Enter your access password to continue.</p>
+      <input id="pw-input" type="password" placeholder="••••" maxlength="20"
+             autocomplete="off" spellcheck="false" />
+      <button id="pw-btn">Unlock</button>
+      <div id="pw-error"></div>
+      <div id="pw-attempts"></div>
+    </div>
+  </div>
+
+  <!-- ── LOCKED OVERLAY ── -->
+  <div id="locked-overlay">
+    <div id="locked-box">
+      <div class="lock-icon">🔒</div>
+      <h2>Access Locked</h2>
+      <p>Too many incorrect attempts.<br>Please reload the page and try again.</p>
+    </div>
+  </div>
+
+  <!-- ── MAP (hidden until unlocked) ── -->
+  <div id="map"></div>
+
+  <script>
+    // =========================================================
+    // PASSWORD GATE — SHA-1 of "7239"
+    // =========================================================
+    const CORRECT_HASH = "5a042f309522d0319509e82d9ef4e9b19d1be086";
+    const MAX_ATTEMPTS = 5;
+    let attempts = 0;
+    let mapInitialized = false;
+
+    async function sha1(str) {
+      const buf = new TextEncoder().encode(str);
+      const hash = await crypto.subtle.digest("SHA-1", buf);
+      return Array.from(new Uint8Array(hash)).map(b => b.toString(16).padStart(2,"0")).join("");
+    }
+
+    async function checkPassword() {
+      const input      = document.getElementById("pw-input");
+      const errorEl    = document.getElementById("pw-error");
+      const attemptsEl = document.getElementById("pw-attempts");
+      const val        = input.value.trim();
+
+      if (!val) { errorEl.textContent = "Please enter a password."; return; }
+
+      const hash = await sha1(val);
+
+      if (hash === CORRECT_HASH) {
+        document.getElementById("pw-overlay").style.display = "none";
+        document.getElementById("map").style.display = "block";
+        if (!mapInitialized) { mapInitialized = true; initMap(); }
+      } else {
+        attempts++;
+        input.value = "";
+        input.classList.remove("shake");
+        void input.offsetWidth; // reflow to restart animation
+        input.classList.add("shake");
+        setTimeout(() => input.classList.remove("shake"), 400);
+
+        if (attempts >= MAX_ATTEMPTS) {
+          document.getElementById("pw-overlay").style.display = "none";
+          const lo = document.getElementById("locked-overlay");
+          lo.style.display = "flex";
+        } else {
+          const rem = MAX_ATTEMPTS - attempts;
+          errorEl.textContent = "Incorrect password. Please try again.";
+          attemptsEl.textContent = `${rem} attempt${rem !== 1 ? "s" : ""} remaining`;
+        }
+      }
+    }
+
+    document.getElementById("pw-btn").addEventListener("click", checkPassword);
+    document.getElementById("pw-input").addEventListener("keydown", e => {
+      if (e.key === "Enter") checkPassword();
+    });
+
+    // =========================================================
+    // MAP — only runs after correct password
+    // =========================================================
+    function initMap() {
+
+    const DATASETS = [
+      { id: "overheight",     name: "Overheight Collision Risk",  csvUrl: "risk_overheight_collision.csv",        riskIndexCol: "Risk_Index" },
+      { id: "fatigue",        name: "Fatigue Risk",               csvUrl: "fatigue_riskk.csv",            riskIndexCol: "Pf_fatigue" },
+      { id: "flood_scour",    name: "Flood + Scour Risk",         csvUrl: "risk_floodd.csv",               riskIndexCol: "Risk_flood" },
+      { id: "wildfire",       name: "Wildfire Risk",              csvUrl: "risk_wildfire.csv",             riskIndexCol: "Risk_wildfire" },
+      { id: "hurricane",      name: "Hurricane Risk",             csvUrl: "risk_hurricanneee.csv",          riskIndexCol: "Risk_hurricane" },
+      { id: "explosive",      name: "Explosive Risk",             csvUrl: "risk_explosivee.csv",           riskIndexCol: "CF" },
+      { id: "vessel",         name: "Vessel Collision Risk",      csvUrl: "risk_vessell.csv",              riskIndexCol: "Risk_vessel" },
+      { id: "deterioration",  name: "Advanced Deterioration Risk",csvUrl: "risk_deteriorationn.csv",       riskIndexCol: "Risk_advdet" },
+      { id: "tornado",        name: "Tornado Risk",               csvUrl: "risk_tornado (1).csv",          riskIndexCol: "Risk_tornado" },
+      { id: "overloads",      name: "Overload Risk",              csvUrl: "risk_overloads (1).csv",        riskIndexCol: "Risk_Index" },
+      { id: "other-truck",    name: "Other Truck Collision Risk", csvUrl: "risk_other_truck.csv",      riskIndexCol: "Risk_truck" }
+    ];
+
+    const INCIDENT_KEY = "Risk_Level";
+
+    const map = L.map("map", { preferCanvas: true }).setView([31, -99], 6);
+    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+      maxZoom: 19,
+      attribution: "&copy; OpenStreetMap contributors",
+    }).addTo(map);
+
+    const status      = document.getElementById("status");
+    const typeFilter  = document.getElementById("typeFilter");
+    const reloadBtn   = document.getElementById("reload");
+    const riskDataset = document.getElementById("riskDataset");
+
+    for (const ds of DATASETS) {
+      const opt = document.createElement("option");
+      opt.value = ds.id; opt.textContent = ds.name;
+      riskDataset.appendChild(opt);
+    }
+
+    const LABEL_MAP_HTML = {
+      "STRUCTURE_NUMBER_008": "Structure Number",
+      "LOCATION_009": "Location",
+      "coordinates (lat, lon)": "Coordinates (lat, lon)",
+      "COORDINATES": "Coordinates (lat, lon)",
+      "lat": "Latitude", "lon": "Longitude",
+      "YEAR_BUILT_027": "Year Built", "_year_built": "Year Built",
+      "Risk_Level": "Risk Level / Rank Group",
+      "ADT_029": "ADT", "PERCENT_ADT_TRUCK_109": "Truck % (NBI 109)",
+      "MIN_VERT_CLR_010": "Minimum vertical clearance",
+      "d_vc": "Clearance deficiency, d<sub>vc</sub>",
+      "N_detour": "Detoured vehicles/day, N<sub>d</sub>",
+      "p_height": "Overheight probability, p<sub>h</sub>",
+      "V_elem_height": "Element vulnerability, V<sub>e</sub>",
+      "Risk_Index": "Risk index, R",
+      "ADTT_SL": "Truck traffic (single lane), ADTT",
+      "AGE": "Bridge age, A",
+      "AM_years": "Mean fatigue life, A<sub>M</sub>",
+      "AE_years": "Evaluation fatigue life, A<sub>E</sub>",
+      "Pf_fatigue": "Fatigue failure probability, P<sub>f</sub>",
+      "SCOUR_CRITICAL_113": "Scour critical rating",
+      "p_flood": "Annual flood probability, p<sub>f</sub>",
+      "V_elem_flood": "Element vulnerability, V<sub>e</sub>",
+      "V_age_flood": "Age vulnerability, V<sub>age</sub>",
+      "V_des_flood": "Design vulnerability, V<sub>des</sub>",
+      "V_chan_flood": "Channel vulnerability, V<sub>chan</sub>",
+      "Risk_flood": "Flood + scour risk index, R<sub>f</sub>",
+      "N_wildfires_within_1mi": "Wildfires within 1 mile, N",
+      "T_years_wildfire_obs": "Observation period (years), T",
+      "p_wildfire": "Annual wildfire probability, p<sub>w</sub>",
+      "V_age_wildfire": "Age vulnerability, V<sub>age</sub>",
+      "V_des_wildfire": "Design vulnerability, V<sub>des</sub>",
+      "Risk_wildfire": "Wildfire risk index, R<sub>w</sub>",
+      "V_des_hurr": "Design vulnerability, V<sub>des</sub>",
+      "V_scour_hurr": "Scour vulnerability, V<sub>scour</sub>",
+      "V_age_hurr": "Age vulnerability, V<sub>age</sub>",
+      "Risk_hurricane": "Hurricane risk index, R<sub>h</sub>",
+      "S_symbolic": "Symbolic importance, S",
+      "E_economic": "Economic importance, E",
+      "D_detour": "Detour impact, D",
+      "CF": "Criticality factor, CF = S + (E &times; D)",
+      "PIER_PROTECTION_111": "Pier protection (NBI 111)",
+      "pvessel": "Annual vessel collision probability, p<sub>v</sub>",
+      "V_des_vessel": "Design vulnerability, V<sub>des</sub>",
+      "V_age_vessel": "Age vulnerability, V<sub>age</sub>",
+      "Risk_vessel": "Vessel collision risk index, R<sub>v</sub>",
+      "MAT_GROUP": "Material group",
+      "DECK_COND_058": "Deck condition (NBI 058)",
+      "SUPERSTRUCTURE_COND_059": "Superstructure condition (NBI 059)",
+      "SUBSTRUCTURE_COND_060": "Substructure condition (NBI 060)",
+      "D_decay_index": "Decay index, D",
+      "p_advdet": "Advanced deterioration probability, p<sub>ad</sub>",
+      "Risk_advdet": "Advanced deterioration risk index, R<sub>ad</sub>",
+      "N_i": "Event count, N<sub>i</sub>",
+      "p_tornado": "Annual tornado probability, p<sub>t</sub>",
+      "V_age": "Age vulnerability, V<sub>age</sub>",
+      "V_des": "Design vulnerability, V<sub>des</sub>",
+      "Risk_tornado": "Tornado risk index, R<sub>t</sub>",
+      "INVENTORY_RATING_066": "Operating rating (NBI 066)",
+      "d_i": "Detoured truck fraction, d<sub>i</sub>",
+      "V_age_overload": "Age vulnerability, V<sub>age</sub>",
+      "Risk_truck": "Truck collision risk index, R<sub>truck</sub>",
+      "Risk_Explanation": "Risk Explanation",
+      "Street_View_URL": "Street View"
+    };
+
+    function colorMapFor() {
+      return { "Top 20": "#b30000", "Top 50": "#e34a33", "Top 100": "#fd8d3c" };
+    }
+
+    function looksSwapped(lon, lat) {
+      return Math.abs(lon) <= 90 && Math.abs(lat) > 90 && Math.abs(lat) <= 180;
+    }
+
+    function keyLookupFromKeys(keys, patterns) {
+      return keys.find(k => patterns.some(rx => rx.test(String(k)))) || null;
+    }
+
+    function parseCoordsField(val) {
+      if (val == null) return null;
+      const m = String(val).trim().match(/-?\d+(?:\.\d+)?/g);
+      if (!m || m.length < 2) return null;
+      let lat = parseFloat(m[0]), lon = parseFloat(m[1]);
+      if (Math.abs(lat) > 90 && Math.abs(lon) <= 90) { const t = lat; lat = lon; lon = t; }
+      if (!isFinite(lat) || !isFinite(lon)) return null;
+      return { lat, lon };
+    }
+
+    function makePopup(props) {
+      if (!props) return "";
+      const rows = [];
+      const isUrl = v => typeof v === "string" && /^https?:\/\//i.test(v);
+      const domainText = url => { try { return new URL(url).hostname.replace(/^www\./,""); } catch { return url; } };
+      for (const [k, rawV] of Object.entries(props)) {
+        if (rawV == null) continue;
+        let v = String(rawV).trim();
+        if (!v || v.toLowerCase() === "null") continue;
+        if (isUrl(v)) v = `<a href="${rawV}" target="_blank" rel="noopener">${domainText(rawV)}</a>`;
+        const label = LABEL_MAP_HTML[k] || k;
+        rows.push(`<tr><th style="text-align:left;padding-right:10px;white-space:nowrap;">${label}</th><td>${v}</td></tr>`);
+      }
+      return `<div style="font:13px/1.35 system-ui,Segoe UI,Roboto,Arial;"><table>${rows.join("")}</table></div>`;
+    }
+
+    async function readCsvObjectsFromUrl(url) {
+      return new Promise((resolve, reject) => {
+        Papa.parse(url, {
+          download: true, header: true, dynamicTyping: false, skipEmptyLines: true,
+          complete: r => resolve(r.data || []),
+          error: err => reject(err),
+        });
+      });
+    }
+
+    let currentLayer = null;
+    let groupsByType = {};
+    let legendControl = null;
+
+    async function plotFromRows(rows, dataset) {
+      const RISK_INDEX_COL = dataset.riskIndexCol;
+      if (!rows.length) throw new Error("No rows found in CSV.");
+
+      const sorted = [...rows].sort((a, b) => {
+        const va = Number(a[RISK_INDEX_COL]), vb = Number(b[RISK_INDEX_COL]);
+        if (!isFinite(va) && !isFinite(vb)) return 0;
+        if (!isFinite(va)) return 1; if (!isFinite(vb)) return -1;
+        return vb - va;
+      });
+
+      sorted.forEach((r, idx) => {
+        const rank = idx + 1;
+        if (rank <= 20)       r[INCIDENT_KEY] = "Top 20";
+        else if (rank <= 50)  r[INCIDENT_KEY] = "Top 50";
+        else if (rank <= 100) r[INCIDENT_KEY] = "Top 100";
+        else                  r[INCIDENT_KEY] = "All Bridges";
+      });
+
+      const sample = sorted[0] || {};
+      const keys = Object.keys(sample);
+      const latKey   = keyLookupFromKeys(keys, [/^lat(i(tude)?)?$/i, /^lat_?dd$/i, /^lat_?\d+/i, /^lat/i]);
+      const lonKey   = keyLookupFromKeys(keys, [/^(lon(g(itude)?)?|lng)$/i, /^lon_?dd$/i, /^long_?\d+/i, /^lon/i, /^long/i]);
+      const coordKey = keyLookupFromKeys(keys, [/^coordinates?\s*\(\s*lat\s*,\s*lon\s*\)$/i, /^coordinates$/i, /^coords$/i]);
+
+      if (!((latKey && lonKey) || coordKey)) throw new Error("Could not find coordinate columns.");
+
+      const points = [];
+      for (const r of sorted) {
+        let lat, lon;
+        if (coordKey) {
+          const pair = parseCoordsField(r[coordKey]);
+          if (!pair) continue;
+          ({ lat, lon } = pair);
+        } else {
+          lat = parseFloat(r[latKey]); lon = parseFloat(r[lonKey]);
+        }
+        if (!isFinite(lat) || !isFinite(lon)) continue;
+        if (looksSwapped(lon, lat)) { const t = lat; lat = lon; lon = t; }
+        points.push({ r, lat, lon });
+      }
+      if (!points.length) throw new Error("No valid coordinates parsed.");
+
+      if (currentLayer) { map.removeLayer(currentLayer); currentLayer = null; }
+      if (legendControl) { map.removeControl(legendControl); legendControl = null; }
+
+      groupsByType = { "Top 20": [], "Top 50": [], "Top 100": [], "__ALL__": [] };
+
+      const colors = colorMapFor();
+      for (const p of points) {
+        const lvl  = p.r?.[INCIDENT_KEY];
+        const fill = (lvl === "Top 20" || lvl === "Top 50" || lvl === "Top 100") ? (colors[lvl] || "#666") : "#777";
+        const marker = L.circleMarker([p.lat, p.lon], {
+          radius: 6, fillColor: fill, color: "#333", weight: 1, opacity: 1, fillOpacity: 0.9,
+        }).bindPopup(makePopup(p.r));
+
+        groupsByType["__ALL__"].push(marker);
+        if (lvl === "Top 20")  { groupsByType["Top 20"].push(marker); groupsByType["Top 50"].push(marker); groupsByType["Top 100"].push(marker); }
+        else if (lvl === "Top 50")  { groupsByType["Top 50"].push(marker); groupsByType["Top 100"].push(marker); }
+        else if (lvl === "Top 100") { groupsByType["Top 100"].push(marker); }
+      }
+
+      typeFilter.value = "Top 20";
+      currentLayer = L.featureGroup(groupsByType["Top 20"]).addTo(map);
+      const b = currentLayer.getBounds();
+      if (b.isValid()) map.fitBounds(b.pad(0.1));
+
+      legendControl = L.control({ position: "topright" });
+      legendControl.onAdd = function () {
+        const div = L.DomUtil.create("div", "legend");
+        const h = document.createElement("div");
+        h.textContent = dataset.name + " (Top Filters)";
+        h.style.cssText = "font-weight:600;margin-bottom:6px;";
+        div.appendChild(h);
+        for (const lvl of ["Top 20","Top 50","Top 100"]) {
+          const row = document.createElement("div"); row.className = "row";
+          const sw  = document.createElement("span"); sw.className = "swatch"; sw.style.background = colors[lvl];
+          const lab = document.createElement("span"); lab.textContent = lvl;
+          row.appendChild(sw); row.appendChild(lab); div.appendChild(row);
+        }
+        return div;
+      };
+      legendControl.addTo(map);
+
+      status.textContent =
+        `Dataset: ${dataset.name}\nFile: ${dataset.csvUrl}\nShowing: Top 20\nPoints: ${groupsByType["Top 20"].length}`;
+
+      typeFilter.onchange = () => {
+        if (currentLayer) map.removeLayer(currentLayer);
+        const markersToShow = typeFilter.value === "__ALL__" ? groupsByType["__ALL__"] : (groupsByType[typeFilter.value] || []);
+        currentLayer = L.featureGroup(markersToShow).addTo(map);
+        const bb = currentLayer.getBounds();
+        if (bb.isValid()) map.fitBounds(bb.pad(0.1));
+        const label = typeFilter.value === "__ALL__" ? "All bridges" : typeFilter.value;
+        status.textContent = `Dataset: ${dataset.name}\nFile: ${dataset.csvUrl}\nShowing: ${label}\nPoints: ${markersToShow.length}`;
+      };
+    }
+
+    function getSelectedDataset() {
+      return DATASETS.find(d => d.id === riskDataset.value) || DATASETS[0];
+    }
+
+    async function loadAndPlot() {
+      try {
+        const ds = getSelectedDataset();
+        status.textContent = `Fetching ${ds.csvUrl}…\nDataset: ${ds.name}`;
+        const rows = await readCsvObjectsFromUrl(ds.csvUrl);
+        await plotFromRows(rows, ds);
+      } catch (err) {
+        console.error(err);
+        status.textContent = `Error: ${err.message}\n\nTips:\n• Put ALL CSV files in the SAME folder as this HTML.\n• Run a local server (VS Code Live Server or python -m http.server).`;
+      }
+    }
+
+    reloadBtn.addEventListener("click", loadAndPlot);
+    riskDataset.addEventListener("change", loadAndPlot);
+    loadAndPlot();
+
+    } // end initMap()
+  </script>
+
+  <!-- ── TOPBAR + STATUS (inside map, only visible after unlock) ── -->
+  <div class="topbar">
+    <label for="riskDataset"><strong>Risk type:</strong></label>
+    <select id="riskDataset"></select>
+    <label for="typeFilter"><strong>Risk level:</strong></label>
+    <select id="typeFilter">
+      <option value="Top 20">Top 20</option>
+      <option value="Top 50">Top 50</option>
+      <option value="Top 100">Top 100</option>
+      <option value="__ALL__">All bridges</option>
+    </select>
+    <button id="reload">Reload</button>
+  </div>
+  <pre class="status" id="status">Loading…</pre>
+
+</body>
+</html>
